@@ -1,5 +1,11 @@
 # Education Data Analysis Sample
 
+**Figures**
+
+![](images/Fig 1..png)
+
+![](images/Fig 2..png){width="1468"}
+
 **Findings**
 
 -   Figure 1 shows disparities in states’ per-pupil education finances from School Year 2020–21 to 2021–22. The U.S. as a whole experienced increases in revenue and spending (i.e., support and benefit expenditure), but the percent change varied by state. For instance, Indiana had the largest increase in benefit spending at over 60%, while Illinois experienced a decrease of more than 20%. These differences reflect unequal state-level responses in the wake of the pandemic and point to a pattern of school finance inequity across the country.
