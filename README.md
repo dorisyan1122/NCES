@@ -2,9 +2,9 @@
 
 **Figures**
 
-![](images/Fig 1..png)
+![](images/Fig1.png)
 
-![](images/Fig 2..png){width="1468"}
+![](images/Fig2.png)
 
 **Findings**
 
