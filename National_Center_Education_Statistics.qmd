@@ -1,0 +1,227 @@
+---
+title: "Per-Pupil Public School Finance Analysis: State Trends & Equity Benchmarks"
+author: "Doris Yan"
+format:
+  html:
+    embed-resources: true
+    code-fold: true
+editor: visual
+---
+
+## Introduction
+
+**Data Source**: [National Center for Education Statistics (NCES)](https://nces.ed.gov/ccd/files.asp)
+
+**Objective**: To explore US public school finance trend and equity in terms of distribution of resources across school districts in every state.
+
+## Import packages and dataset
+
+```{r load packages, output=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(plotly)
+library(here)
+library(readr)
+library(ineq)
+library(maps)
+```
+
+```{r import csv file, warning=FALSE, output=FALSE}
+raw_nces <- 
+  read_csv(
+    here("NCES.csv"),
+    skip = 5,
+    show_col_types = FALSE
+    )
+
+nces <- head(raw_nces, -4)
+```
+
+## Data cleaning
+
+```{r}
+clean_nces <- nces |>
+  rename(
+    school_name = 'Agency Name',
+    state = 'State Name [District] Latest available year',
+    rev_21_22  = 'Total Revenue (TOTALREV) per Pupil (V33) [District Finance] 2021-22',
+    rev_20_21  = 'Total Revenue (TOTALREV) per Pupil (V33) [District Finance] 2020-21',
+    inst_21_22 = 'Total Current Expenditures - Instruction (TCURINST) per Pupil (V33) [District Finance] 2021-22',
+    inst_20_21 = 'Total Current Expenditures - Instruction (TCURINST) per Pupil (V33) [District Finance] 2020-21',
+    supp_21_22 = 'Total Current Expenditures - Support Services (TCURSSVC) per Pupil (V33) [District Finance] 2021-22',
+    supp_20_21 = 'Total Current Expenditures - Support Services (TCURSSVC) per Pupil (V33) [District Finance] 2020-21',
+    ben_21_22  = 'Total Current Expenditures - Benefits (Z34) per Pupil (V33) [District Finance] 2021-22',
+    ben_20_21  = 'Total Current Expenditures - Benefits (Z34) per Pupil (V33) [District Finance] 2020-21')|>
+  mutate(state = str_to_title(tolower(state)),
+         across(rev_21_22:ben_20_21, 
+                 ~suppressWarnings(parse_number(.x)
+                                   )
+                )
+         )|>
+  filter(!if_any(rev_21_22:ben_20_21, is.na))|>
+  arrange(state)
+```
+
+## SY 2020 - 2021 to SY 2021-2022 change
+
+### Data processing
+
+```{r}
+state_pandemic_support <- clean_nces |>
+  select(state,
+         school_name,
+         rev_20_21, rev_21_22,
+         supp_20_21, supp_21_22,
+         ben_20_21,  ben_21_22)|>
+   mutate(
+     # absolute changes
+    rev_diff = rev_21_22   - rev_20_21,
+    supp_diff = supp_21_22  - supp_20_21,
+    ben_diff = ben_21_22   - ben_20_21,
+    # percent changes
+    rev_pct_change = (rev_21_22  / rev_20_21  - 1) * 100,
+    supp_pct_change = (supp_21_22 / supp_20_21 - 1) * 100,
+    ben_pct_change = (ben_21_22  / ben_20_21  - 1) * 100
+  )|>
+  group_by(state) |>
+  summarise(
+    med_rev_pct  = median(rev_pct_change,  na.rm = TRUE),
+    med_supp_pct = median(supp_pct_change, na.rm = TRUE),
+    med_ben_pct  = median(ben_pct_change,  na.rm = TRUE)
+  )
+
+national_pct_medians <- state_pandemic_support |>
+  summarise(
+    med_rev_pct = median(med_rev_pct),
+    med_supp_pct = median(med_supp_pct),
+    med_ben_pct = median(med_ben_pct),
+  )|>
+  pivot_longer(
+    cols = everything(),
+    names_to = "metric",
+    values_to = "value"
+  )
+
+med_pct_comparisons <- state_pandemic_support |>
+  pivot_longer(
+    cols = c(med_rev_pct, med_supp_pct, med_ben_pct),
+    names_to  = "metric",
+    values_to = "pct"
+  )|>
+  group_by(metric) |>
+  summarize(
+    highest_state = state[which.max(pct)],
+    highest_pct = max(pct, na.rm = TRUE),
+    lowest_state = state[which.min(pct)],
+    lowest_pct = min(pct, na.rm = TRUE)
+  )|>
+  left_join(
+    national_pct_medians
+  )|>
+  rename(national_med = 'value')
+```
+
+### Graphing
+
+```{r}
+position <- position_dodge(width = 0.8)
+
+med_pct_comparisons |>
+  mutate(metric = factor(metric,
+                         levels = c("med_rev_pct","med_supp_pct","med_ben_pct"),
+                         labels = c("Revenue","Support","Benefit"))) |>
+  pivot_longer(c(lowest_pct, national_med, highest_pct),
+               names_to="type", values_to="pct") |>
+  mutate(
+    type = factor(type,
+                  levels = c("lowest_pct","national_med","highest_pct"),
+                  labels = c("Lowest","National","Highest")),
+    label = case_when(
+      type=="Lowest"  ~ lowest_state,
+      type=="Highest" ~ highest_state,
+      TRUE ~ sprintf("%.1f%%", pct)
+                  ),
+    vjust_value = ifelse(type=="Lowest", 1.5, -0.5)
+    ) |>
+  ggplot(aes(metric, pct, fill = type)) +
+    geom_col(position = position, width = 0.6) +
+    geom_text(aes(label=label, vjust=vjust_value),
+              position = position, size=3) +
+    labs(x="School Finance Category", 
+         y="State Median of All District % Changes", 
+         title="Fig 1. Percent Change in Per-Pupil Finances\nfor Lowest-, Median-, and Highest-Change States \nSY 2020-21 to SY 2021-22") +
+  theme_minimal()+
+  theme(legend.title = element_blank()
+        )
+```
+
+## Distribution inequity
+
+### Data processing
+
+```{r}
+state_9010_tile <- clean_nces |>
+  filter(state != "Hawaii") |>
+  group_by(state) |>
+  summarise(
+    Revenue = {p <- quantile(rev_21_22,  c(.1, .9), na.rm = TRUE); p[2]/p[1]},
+    Support = {p <- quantile(supp_21_22, c(.1, .9), na.rm = TRUE); p[2]/p[1]},
+    Benefit = {p <- quantile(ben_21_22,  c(.1, .9), na.rm = TRUE); p[2]/p[1]},
+    .groups = "drop"
+  ) |>
+  pivot_longer(-state, names_to = "metric", values_to = "ratio") |>
+  filter(is.finite(ratio)) |>
+  group_by(metric) |>
+  mutate(med_all = median(ratio, na.rm = TRUE)) |>
+  summarise(
+    lowest_state = state[which.min(ratio)],
+    lowest_value = min(ratio, na.rm = TRUE),
+    median_state = state[which.min(abs(ratio - med_all))],
+    median_value = med_all[1],
+    highest_state = state[which.max(ratio)],
+    highest_value = max(ratio, na.rm = TRUE),
+    .groups = "drop"
+  ) 
+
+tile_comparisons <- state_9010_tile |>
+  # bring lowest/median/highest into rows in one go
+  pivot_longer(
+    cols = -metric,
+    names_to = c("type", ".value"),
+    names_pattern = "(lowest|median|highest)_(state|value)"
+  ) |>
+  mutate(
+    # rename value → ratio, and clean up type & metric
+    ratio = value,
+    type = factor(type,
+                    levels = c("lowest","median","highest"),
+                    labels = c("Lowest","Median","Highest")),
+    metric = factor(metric,
+                    levels = c("Revenue","Support","Benefit"))
+  ) |>
+  select(metric, type, state, ratio)
+```
+
+### Graphing
+
+```{r}
+tile_comparisons |>
+  ggplot(aes(metric, ratio, fill = type)) +
+    geom_col(position = position_dodge(0.8), width = 0.5) +
+    geom_text(aes(label = state, 
+                  vjust = if_else(type == "Lowest",  -0.5, 
+                          if_else(type == "Highest", -0.5, -0.5))),
+              position = position_dodge(0.8),
+              size = 3) +
+    labs(
+      title = "Fig 2. States with Lowest, Median, and Highest 90th/10th Percentile Ratios\n
+      SY 2021-22",
+      x = "School Finance Category",
+      y = "Ratio of 90th to 10th Percentile per-Pupil District Funding"
+    ) +
+    theme_minimal() +
+    theme(legend.title = element_blank()
+          )
+```
+
+## Summary
