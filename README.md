@@ -1,4 +1,8 @@
-# Education Data Analysis Sample
+# Education Data Analysis Sample-Doris Yan
+
+**Data Source**: [National Center for Education Statistics (NCES)](https://nces.ed.gov/ccd/files.asp)
+
+**Objective**: To explore US public school finance trend and equity in terms of distribution of resources across school districts in every state
 
 **Figures**
 
